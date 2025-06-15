@@ -21,8 +21,9 @@ import {
   Monitor,
   Users,
   Landmark,
+  Target,
 } from "lucide-react";
-import { DocumentData } from "@/types";
+import { DocumentData, BoundingBox } from "@/types";
 
 interface DataDisplayProps {
   data: DocumentData;
@@ -41,21 +42,26 @@ export default function DataDisplay({ data, onStartNew }: DataDisplayProps) {
 
   const fieldLabels: Record<string, string> = {
     model: "ATM Model",
-    branch_code: "Branch Code",
+    branch_code: "Branch Code", 
     bank: "Bank Name",
     city: "City",
     address: "Address",
     technician_name: "Technician Name",
   };
 
+  // Convert the bounding box results to a simple object for display
+  const extractedData = data.results.reduce((acc, result) => {
+    acc[result.class_id] = result.text;
+    return acc;
+  }, {} as Record<string, string>);
+
   const copyToClipboard = async () => {
-    const textData = Object.entries(data)
+    const textData = Object.entries(extractedData)
       .map(([key, value]) => `${fieldLabels[key]}: ${value}`)
       .join('\n');
     
     try {
       await navigator.clipboard.writeText(textData);
-      // You could add a toast notification here
       console.log('Data copied to clipboard');
     } catch (err) {
       console.error('Failed to copy data: ', err);
@@ -68,7 +74,7 @@ export default function DataDisplay({ data, onStartNew }: DataDisplayProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'field-service-data.json';
+    a.download = 'field-service-extraction-results.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -111,28 +117,41 @@ export default function DataDisplay({ data, onStartNew }: DataDisplayProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[300px] font-semibold">Field</TableHead>
-                <TableHead className="font-semibold">Value</TableHead>
+                <TableHead className="font-semibold">Extracted Value</TableHead>
+                <TableHead className="font-semibold">Confidence</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {Object.entries(data).map(([key, value]) => (
-                <TableRow key={key} className="hover:bg-gray-50/50">
+              {data.results.map((result, index) => (
+                <TableRow key={index} className="hover:bg-gray-50/50">
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 rounded-md bg-gray-100 text-gray-600">
-                        {fieldIcons[key]}
+                        {fieldIcons[result.class_id] || <Target className="h-4 w-4" />}
                       </div>
-                      {fieldLabels[key]}
+                      {fieldLabels[result.class_id] || result.class_id}
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="max-w-md">
-                      {value ? (
-                        <span className="text-gray-900">{value}</span>
+                      {result.text ? (
+                        <span className="text-gray-900">{result.text}</span>
                       ) : (
                         <span className="text-gray-400 italic">No data extracted</span>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant="outline" 
+                      className={`${
+                        result.confidence > 0.8 ? 'border-green-500 text-green-700' :
+                        result.confidence > 0.6 ? 'border-yellow-500 text-yellow-700' :
+                        'border-red-500 text-red-700'
+                      }`}
+                    >
+                      {(result.confidence * 100).toFixed(1)}%
+                    </Badge>
                   </TableCell>
                 </TableRow>
               ))}
@@ -145,25 +164,27 @@ export default function DataDisplay({ data, onStartNew }: DataDisplayProps) {
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-green-600">
-                {Object.values(data).filter(value => value && value.trim().length > 0).length}
+                {data.results.filter(result => result.text && result.text.trim().length > 0).length}
               </div>
-              <div className="text-sm text-gray-600">Fields Extracted</div>
+              <div className="text-sm text-gray-600">Fields Detected</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {Object.values(data).filter(value => !value || value.trim().length === 0).length}
+                {data.results.length > 0 ? 
+                  (data.results.reduce((sum, result) => sum + result.confidence, 0) / data.results.length * 100).toFixed(1) 
+                  : '0'}%
               </div>
-              <div className="text-sm text-gray-600">Empty Fields</div>
+              <div className="text-sm text-gray-600">Avg Confidence</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {Math.round((Object.values(data).filter(value => value && value.trim().length > 0).length / Object.values(data).length) * 100)}%
+                {data.results.filter(result => result.confidence > 0.8).length}
               </div>
-              <div className="text-sm text-gray-600">Extraction Rate</div>
+              <div className="text-sm text-gray-600">High Confidence</div>
             </CardContent>
           </Card>
         </div>

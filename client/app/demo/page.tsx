@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import ImageUpload from "@/components/ImageUpload";
+import LoadingSimulation from "@/components/LoadingSimulation";
 import DataDisplay from "@/components/DataDisplay";
-import { DocumentData, UploadState } from "@/types";
+import { UploadState } from "@/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Zap, Shield, Clock, Sparkles, Brain, AlertCircle } from "lucide-react";
+import { ArrowLeft, Shield, Clock, Sparkles, Brain, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function DemoPage() {
@@ -15,27 +16,53 @@ export default function DemoPage() {
     completed: false,
     error: null,
     data: null,
+    showLoadingAnimation: false,
   });
 
   const [uploadedImageData, setUploadedImageData] = useState<string>("");
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [apiResponse, setApiResponse] = useState<any>(null);
+
+  const handleLoadingComplete = async () => {
+    // API response is already available from handleImageUpload
+    if (apiResponse) {
+      setUploadState({
+        uploading: false,
+        processing: false,
+        completed: true,
+        error: null,
+        data: apiResponse,
+        showLoadingAnimation: false,
+      });
+    } else {
+      setUploadState(prev => ({
+        ...prev,
+        showLoadingAnimation: false,
+        processing: false,
+        error: 'No API response available',
+      }));
+    }
+  };
 
   const handleImageUpload = async (file: File, imageDataUrl: string) => {
     setUploadedImageData(imageDataUrl);
+    setCurrentFile(file);
+    
     setUploadState({
       uploading: false,
       processing: true,
       completed: false,
       error: null,
       data: null,
+      showLoadingAnimation: false,
     });
 
     try {
-      // Create FormData and append the file
+      // Make API call first
       const formData = new FormData();
       formData.append('file', file);
 
-      // Call the real API
-      const response = await fetch('http://34.29.158.230:8000/analyze', {
+      const response = await fetch('https://mlops.ahmad-ashfaq.com/analyze', {
         method: 'POST',
         body: formData,
       });
@@ -44,14 +71,17 @@ export default function DemoPage() {
         throw new Error(`API request failed with status ${response.status}`);
       }
 
-      const data: DocumentData = await response.json();
+      const data = await response.json();
+      setApiResponse(data);
 
+      // Now start the loading animation with the response
       setUploadState({
         uploading: false,
         processing: false,
-        completed: true,
+        completed: false,
         error: null,
-        data: data,
+        data: null,
+        showLoadingAnimation: true,
       });
     } catch (error) {
       console.error('Error processing image:', error);
@@ -61,18 +91,22 @@ export default function DemoPage() {
         completed: false,
         error: error instanceof Error ? error.message : 'Failed to process image',
         data: null,
+        showLoadingAnimation: false,
       });
     }
   };
 
   const handleStartNew = () => {
     setUploadedImageData("");
+    setCurrentFile(null);
+    setApiResponse(null);
     setUploadState({
       uploading: false,
       processing: false,
       completed: false,
       error: null,
       data: null,
+      showLoadingAnimation: false,
     });
   };
 
@@ -131,7 +165,7 @@ export default function DemoPage() {
       {/* Demo Content */}
       <div className="relative py-8 px-4">
         <div className="container mx-auto max-w-6xl">
-          {!uploadState.processing && !uploadState.completed && (
+          {!uploadState.processing && !uploadState.completed && !uploadState.showLoadingAnimation && (
             <div className="relative">
               {/* Additional subtle background elements */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-indigo-50/30 to-transparent rounded-2xl"></div>
@@ -142,13 +176,23 @@ export default function DemoPage() {
             </div>
           )}
 
+          {uploadState.showLoadingAnimation && uploadedImageData && (
+            <div className="relative">
+              <LoadingSimulation
+                onComplete={handleLoadingComplete}
+                uploadedImage={uploadedImageData}
+                apiResponse={apiResponse}
+              />
+            </div>
+          )}
+
           {uploadState.processing && (
             <div className="relative">
               <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
                 <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                 <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-gray-900">Processing Your Document</h3>
-                  <p className="text-gray-600">AI is analyzing your field service log...</p>
+                  <h3 className="text-xl font-semibold text-gray-900">Making API Request</h3>
+                  <p className="text-gray-600">Sending image to AI server...</p>
                 </div>
               </div>
             </div>

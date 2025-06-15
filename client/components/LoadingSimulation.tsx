@@ -1,84 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Scan, Brain, Eye, Target } from "lucide-react";
 import Image from "next/image";
 
+interface BoundingBox {
+  class_id: string;
+  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
+  confidence: number;
+  text: string;
+}
+
 interface LoadingSimulationProps {
   onComplete: () => void;
   uploadedImage: string;
+  apiResponse?: { results: BoundingBox[] } | null;
 }
 
-export default function LoadingSimulation({ onComplete, uploadedImage }: LoadingSimulationProps) {
+export default function LoadingSimulation({ onComplete, uploadedImage, apiResponse }: LoadingSimulationProps) {
   const [progress, setProgress] = useState(0);
   const [currentStage, setCurrentStage] = useState(0);
   const [scanlinePosition, setScanlinePosition] = useState(0);
   const [scannedArea, setScannedArea] = useState(0);
   const [detectionBoxes, setDetectionBoxes] = useState<Array<{id: number, x: number, y: number, width: number, height: number, opacity: number}>>([]);
+  const [showRealBoxes, setShowRealBoxes] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   const stages = [
-    { name: "Analyzing Structure", icon: <Eye className="h-4 w-4" />, color: "blue" },
-    { name: "Detecting Fields", icon: <Target className="h-4 w-4" />, color: "purple" },
-    { name: "Reading Text", icon: <Scan className="h-4 w-4" />, color: "orange" },
+    { name: "Analyzing Image", icon: <Eye className="h-4 w-4" />, color: "blue" },
     { name: "Processing Data", icon: <Brain className="h-4 w-4" />, color: "green" },
   ];
 
+  // Convert API bounding boxes to percentage-based positioning
+  const convertBoundingBoxes = () => {
+    if (!apiResponse?.results || !imageRef.current) return [];
+    
+    const imageElement = imageRef.current;
+    
+    return apiResponse.results.map((result, index) => {
+      const [x1, y1, x2, y2] = result.bbox;
+      
+      // Convert absolute coordinates to percentages
+      const left = (x1 / imageElement.naturalWidth) * 100;
+      const top = (y1 / imageElement.naturalHeight) * 100;
+      const width = ((x2 - x1) / imageElement.naturalWidth) * 100;
+      const height = ((y2 - y1) / imageElement.naturalHeight) * 100;
+      
+      return {
+        id: index,
+        left,
+        top,
+        width,
+        height,
+        label: result.class_id,
+        text: result.text,
+        confidence: result.confidence
+      };
+    });
+  };
+
   useEffect(() => {
     const simulateProcessing = async () => {
-      // Stage 1: Image Analysis with advanced scanning effect
+      // Stage 1: Image Analysis with scanning effect
       setCurrentStage(0);
-      for (let i = 0; i <= 25; i++) {
+      for (let i = 0; i <= 50; i++) {
         await new Promise(resolve => setTimeout(resolve, 60));
         setProgress(i);
-        setScanlinePosition((i / 25) * 100);
-        setScannedArea((i / 25) * 100);
+        setScanlinePosition((i / 50) * 100);
+        setScannedArea((i / 50) * 100);
       }
 
-      // Stage 2: Object Detection with boxes appearing
+      // Stage 2: Wait for API response or show completion
       setCurrentStage(1);
-      const boxes = [
-        { id: 1, x: 15, y: 20, width: 30, height: 8, opacity: 0 },
-        { id: 2, x: 60, y: 25, width: 35, height: 6, opacity: 0 },
-        { id: 3, x: 10, y: 40, width: 40, height: 10, opacity: 0 },
-        { id: 4, x: 55, y: 45, width: 30, height: 8, opacity: 0 },
-        { id: 5, x: 20, y: 65, width: 45, height: 12, opacity: 0 },
-        { id: 6, x: 70, y: 70, width: 25, height: 6, opacity: 0 },
-      ];
-
-      for (let i = 25; i <= 50; i++) {
-        await new Promise(resolve => setTimeout(resolve, 80));
-        setProgress(i);
+      
+      // If we have API response, show real bounding boxes
+      if (apiResponse?.results) {
+        setShowRealBoxes(true);
         
-        // Gradually show detection boxes
-        const boxesToShow = Math.floor(((i - 25) / 25) * boxes.length);
-        setDetectionBoxes(boxes.map((box, index) => ({
-          ...box,
-          opacity: index < boxesToShow ? 0.8 : 0
-        })));
-      }
-
-      // Stage 3: Text Recognition with pulsing boxes
-      setCurrentStage(2);
-      for (let i = 50; i <= 80; i++) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        setProgress(i);
+        // Show bounding boxes for 2 seconds
+        for (let i = 50; i <= 100; i++) {
+          await new Promise(resolve => setTimeout(resolve, 30));
+          setProgress(i);
+        }
         
-        // Pulse effect on boxes
-        const pulseIntensity = Math.sin((i - 50) * 0.3) * 0.3 + 0.8;
-        setDetectionBoxes(prev => prev.map(box => ({
-          ...box,
-          opacity: box.opacity > 0 ? pulseIntensity : 0
-        })));
-      }
-
-      // Stage 4: Data Processing
-      setCurrentStage(3);
-      for (let i = 80; i <= 100; i++) {
-        await new Promise(resolve => setTimeout(resolve, 60));
-        setProgress(i);
+        // Wait a bit longer to show the boxes
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        setShowRealBoxes(false);
+      } else {
+        // Just complete the progress without boxes
+        for (let i = 50; i <= 100; i++) {
+          await new Promise(resolve => setTimeout(resolve, 60));
+          setProgress(i);
+        }
       }
 
       // Fade out effects
@@ -92,7 +109,7 @@ export default function LoadingSimulation({ onComplete, uploadedImage }: Loading
     };
 
     simulateProcessing();
-  }, [onComplete]);
+  }, [onComplete, apiResponse]);
 
   return (
     <Card className="w-full max-w-4xl mx-auto">
@@ -108,9 +125,7 @@ export default function LoadingSimulation({ onComplete, uploadedImage }: Loading
               variant="outline" 
               className={`
                 ${currentStage === 0 ? 'border-blue-500 text-blue-600' : ''}
-                ${currentStage === 1 ? 'border-purple-500 text-purple-600' : ''}
-                ${currentStage === 2 ? 'border-orange-500 text-orange-600' : ''}
-                ${currentStage === 3 ? 'border-green-500 text-green-600' : ''}
+                ${currentStage === 1 ? 'border-green-500 text-green-600' : ''}
               `}
             >
               {stages[currentStage]?.icon}
@@ -123,6 +138,7 @@ export default function LoadingSimulation({ onComplete, uploadedImage }: Loading
         <div className="relative max-h-96 overflow-hidden rounded-lg border mb-4">
           <div className="relative">
             <Image
+              ref={imageRef}
               src={uploadedImage}
               alt="Document being processed"
               width={800}
@@ -204,23 +220,28 @@ export default function LoadingSimulation({ onComplete, uploadedImage }: Loading
               </>
             )}
 
-            {/* Detection Boxes */}
-            {detectionBoxes.map((box) => (
+            {/* Real Bounding Boxes from API */}
+            {showRealBoxes && apiResponse?.results && convertBoundingBoxes().map((box) => (
               <div
                 key={box.id}
-                className="absolute border-2 border-red-500 bg-red-500/10 transition-opacity duration-300"
+                className="absolute border-2 border-green-500 bg-green-500/10 transition-all duration-300 animate-pulse"
                 style={{
-                  left: `${box.x}%`,
-                  top: `${box.y}%`,
+                  left: `${box.left}%`,
+                  top: `${box.top}%`,
                   width: `${box.width}%`,
                   height: `${box.height}%`,
-                  opacity: box.opacity,
                 }}
               >
-                <div className="absolute -top-1 -left-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                {/* Corner indicators */}
+                <div className="absolute -top-1 -left-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
+                
+                {/* Label */}
+                <div className="absolute -top-6 left-0 bg-green-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                  {box.label}: {box.text} ({Math.round(box.confidence * 100)}%)
+                </div>
               </div>
             ))}
 
